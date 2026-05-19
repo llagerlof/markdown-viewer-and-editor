@@ -1,0 +1,22 @@
+{
+  "name": "markdown-viewer-and-editor",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Two-pane Markdown viewer and editor: source on the left with syntax highlighting, Milkdown live editor on the right. Built with Svelte and Vite.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@milkdown/crepe": "^7.21.1",
+    "@milkdown/kit": "^7.21.1",
+    "highlight.js": "^11.11.1"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "svelte": "^5.55.8",
+    "vite": "^8.0.13"
+  }
+}
