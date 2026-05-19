@@ -3,7 +3,7 @@
   import MilkdownEditor from "./MilkdownEditor.svelte";
   import "./app.css";
 
-  let markdown = $state("# Hello Milkdown\n\nStart writing your markdown here...\n");
+  let markdown = $state("");
 
   function handleSourceChange(newMarkdown) {
     markdown = newMarkdown;
@@ -17,8 +17,7 @@
       <h1>Markdown Viewer and Editor</h1>
     </div>
     <p class="app-summary">
-      Write Markdown in the source pane or edit the live document on the right.
-      Both views stay synchronized.
+      Write Markdown in the source pane on the left. The live view will be displayed on the right pane.
     </p>
   </header>
 
@@ -34,7 +33,7 @@
     <section class="panel panel-preview" aria-labelledby="preview-title">
       <div class="panel-heading">
         <h2 id="preview-title">Rendered Markdown</h2>
-        <p>Read-only preview powered by Milkdown.</p>
+        <p>Read-only preview.</p>
       </div>
       <MilkdownEditor value={markdown} />
     </section>

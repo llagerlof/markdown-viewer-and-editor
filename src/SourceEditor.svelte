@@ -15,6 +15,7 @@
   onMount(() => {
     textareaEl.value = value;
     renderHighlight(value);
+    textareaEl.focus();
   });
 
   $effect(() => {
