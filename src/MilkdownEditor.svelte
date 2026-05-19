@@ -82,6 +82,19 @@
     outline: none;
   }
 
+  .milkdown-wrap :global(.ProseMirror pre) {
+    background: #f7f7f8;
+    color: #1f2328;
+    margin-top: 20px;
+    margin-bottom: 20px;
+  }
+
+  .milkdown-wrap :global(.ProseMirror pre code),
+  .milkdown-wrap :global(.ProseMirror pre .hljs) {
+    background: transparent;
+    color: inherit;
+  }
+
   /* Remove any extra border from crepe frame theme */
   .milkdown-wrap :global(.milkdown .editor) {
     border: none;
