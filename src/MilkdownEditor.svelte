@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import { Crepe } from "@milkdown/crepe";
+  import { Crepe, CrepeFeature } from "@milkdown/crepe";
   import { replaceAll } from "@milkdown/kit/utils";
   import "@milkdown/crepe/theme/common/style.css";
   import "@milkdown/crepe/theme/frame.css";
@@ -11,11 +11,19 @@
   let crepe;
   let ready = false;
   let lastExternalValue = $state("");
+  let debounceTimer;
 
   onMount(async () => {
     crepe = new Crepe({
       root: containerEl,
       defaultValue: value,
+      features: {
+        [CrepeFeature.CodeMirror]: false,
+        [CrepeFeature.Latex]: false,
+        [CrepeFeature.BlockEdit]: false,
+        [CrepeFeature.Toolbar]: false,
+        [CrepeFeature.Placeholder]: false,
+      },
     });
 
     await crepe.create();
@@ -25,6 +33,7 @@
   });
 
   onDestroy(() => {
+    clearTimeout(debounceTimer);
     if (crepe) {
       crepe.destroy();
     }
@@ -34,16 +43,15 @@
     const v = value;
     if (!ready || !crepe) return;
     if (v === lastExternalValue) return;
-
-    // Only update if the change came from outside (source editor)
-    const currentMarkdown = crepe.getMarkdown();
-    if (normalizeMarkdown(v) === normalizeMarkdown(currentMarkdown)) {
-      lastExternalValue = v;
-      return;
-    }
-
-    crepe.editor.action(replaceAll(v));
     lastExternalValue = v;
+
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      const currentMarkdown = crepe.getMarkdown();
+      if (normalizeMarkdown(v) !== normalizeMarkdown(currentMarkdown)) {
+        crepe.editor.action(replaceAll(v));
+      }
+    }, 150);
   });
 
   function normalizeMarkdown(md) {
