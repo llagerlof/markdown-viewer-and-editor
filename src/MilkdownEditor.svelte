@@ -333,6 +333,11 @@
     margin-bottom: 20px;
   }
 
+  .milkdown-wrap :global(.ProseMirror code) {
+    background: #f7f7f8;
+    color: #1f2328;
+  }
+
   .milkdown-wrap :global(.ProseMirror pre code),
   .milkdown-wrap :global(.ProseMirror pre .hljs) {
     background: transparent;
