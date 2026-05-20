@@ -6,9 +6,14 @@
 
   const version = packageInfo.version;
   let markdown = $state("");
+  let realtimeEditorEnabled = $state(false);
 
   function handleSourceChange(newMarkdown) {
     markdown = newMarkdown;
+  }
+
+  function toggleRealtimeEditor() {
+    realtimeEditorEnabled = !realtimeEditorEnabled;
   }
 </script>
 
@@ -33,11 +38,33 @@
     </section>
 
     <section class="panel panel-preview" aria-labelledby="preview-title">
-      <div class="panel-heading">
-        <h2 id="preview-title">Rendered Markdown</h2>
-        <p>Read-only preview.</p>
+      <div class="panel-heading panel-heading-split">
+        <div>
+          <h2 id="preview-title">Rendered Markdown</h2>
+          <p>
+            {realtimeEditorEnabled
+              ? "Editable preview with formatting bar."
+              : "Read-only preview."}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="preview-toggle"
+          aria-pressed={realtimeEditorEnabled}
+          onclick={toggleRealtimeEditor}
+        >
+          {realtimeEditorEnabled
+            ? "Disable realtime editor"
+            : "Enable realtime editor"}
+        </button>
       </div>
-      <MilkdownEditor value={markdown} />
+      {#key realtimeEditorEnabled}
+        <MilkdownEditor
+          value={markdown}
+          editable={realtimeEditorEnabled}
+          onChange={handleSourceChange}
+        />
+      {/key}
     </section>
   </main>
 </div>
