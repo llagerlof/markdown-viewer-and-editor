@@ -52,6 +52,28 @@
       highlightEl.scrollLeft = textareaEl.scrollLeft;
     }
   }
+
+  export function getCursorOffset() {
+    return textareaEl?.selectionStart ?? 0;
+  }
+
+  export function setCursorOffset(offset) {
+    if (!textareaEl) return;
+
+    const nextOffset = clampOffset(offset, textareaEl.value.length);
+
+    textareaEl.focus();
+    textareaEl.setSelectionRange(nextOffset, nextOffset);
+  }
+
+  export function focus() {
+    textareaEl?.focus();
+  }
+
+  function clampOffset(offset, max) {
+    const nextOffset = Number.isFinite(offset) ? offset : 0;
+    return Math.max(0, Math.min(max, nextOffset));
+  }
 </script>
 
 <div class="source-editor-wrap">

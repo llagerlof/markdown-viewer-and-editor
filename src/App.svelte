@@ -1,4 +1,5 @@
 <script>
+  import { tick } from "svelte";
   import SourceEditor from "./SourceEditor.svelte";
   import MilkdownEditor from "./MilkdownEditor.svelte";
   import "./app.css";
@@ -7,13 +8,28 @@
   const version = packageInfo.version;
   let markdown = $state("");
   let realtimeEditorEnabled = $state(false);
+  let sourceEditor = $state(null);
+  let milkdownEditor = $state(null);
+  let initialRealtimeSourceOffset = $state(0);
 
   function handleSourceChange(newMarkdown) {
     markdown = newMarkdown;
   }
 
-  function toggleRealtimeEditor() {
-    realtimeEditorEnabled = !realtimeEditorEnabled;
+  async function toggleRealtimeEditor() {
+    if (!realtimeEditorEnabled) {
+      initialRealtimeSourceOffset = sourceEditor?.getCursorOffset?.() ?? 0;
+      realtimeEditorEnabled = true;
+      return;
+    }
+
+    const sourceOffset = milkdownEditor?.getSourceOffset?.() ?? 0;
+    realtimeEditorEnabled = false;
+
+    if (!realtimeEditorEnabled) {
+      await tick();
+      sourceEditor?.setCursorOffset?.(sourceOffset);
+    }
   }
 </script>
 
@@ -34,7 +50,7 @@
         <h2 id="source-title">Markdown Source</h2>
         <p>Source editor with Markdown syntax highlighting.</p>
       </div>
-      <SourceEditor value={markdown} onChange={handleSourceChange} />
+      <SourceEditor bind:this={sourceEditor} value={markdown} onChange={handleSourceChange} />
     </section>
 
     <section class="panel panel-preview" aria-labelledby="preview-title">
@@ -60,8 +76,10 @@
       </div>
       {#key realtimeEditorEnabled}
         <MilkdownEditor
+          bind:this={milkdownEditor}
           value={markdown}
           editable={realtimeEditorEnabled}
+          initialSourceOffset={initialRealtimeSourceOffset}
           onChange={handleSourceChange}
         />
       {/key}
