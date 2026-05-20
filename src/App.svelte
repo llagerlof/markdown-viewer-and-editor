@@ -2,7 +2,9 @@
   import SourceEditor from "./SourceEditor.svelte";
   import MilkdownEditor from "./MilkdownEditor.svelte";
   import "./app.css";
+  import packageInfo from "../package.json";
 
+  const version = packageInfo.version;
   let markdown = $state("");
 
   function handleSourceChange(newMarkdown) {
@@ -13,7 +15,7 @@
 <div class="app-shell">
   <header class="app-header">
     <div>
-      <p class="eyebrow">Svelte + Milkdown + Vite</p>
+      <p class="eyebrow">Version {version}</p>
       <h1>Markdown Viewer and Editor</h1>
     </div>
     <p class="app-summary">
