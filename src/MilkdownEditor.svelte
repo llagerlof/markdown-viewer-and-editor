@@ -144,6 +144,14 @@
     outline: none;
   }
 
+  .milkdown-wrap.is-editable :global(.ProseMirror) {
+    padding: 16px 24px 24px 104px;
+  }
+
+  .milkdown-wrap.is-editable :global(.milkdown-block-handle) {
+    z-index: 3;
+  }
+
   .milkdown-wrap :global(.ProseMirror pre) {
     background: #f7f7f8;
     color: #1f2328;
