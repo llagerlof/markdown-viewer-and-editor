@@ -1,16 +1,31 @@
 <script>
-  import { tick } from "svelte";
+  import { tick, onDestroy } from "svelte";
   import SourceEditor from "./SourceEditor.svelte";
   import MilkdownEditor from "./MilkdownEditor.svelte";
   import "./app.css";
   import packageInfo from "../package.json";
 
   const version = packageInfo.version;
-  let markdown = $state("");
+  let markdown = $state(
+    (typeof window !== "undefined" && localStorage.getItem("markdown-editor-content")) || ""
+  );
   let realtimeEditorEnabled = $state(false);
   let sourceEditor = $state(null);
   let milkdownEditor = $state(null);
   let initialRealtimeSourceOffset = $state(0);
+
+  let saveTimeout;
+  $effect(() => {
+    const currentMarkdown = markdown;
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+      localStorage.setItem("markdown-editor-content", currentMarkdown);
+    }, 500);
+  });
+
+  onDestroy(() => {
+    clearTimeout(saveTimeout);
+  });
 
   function handleSourceChange(newMarkdown) {
     markdown = newMarkdown;
