@@ -15,6 +15,18 @@
   onMount(() => {
     textareaEl.value = value;
     renderHighlight(value);
+    
+    // Explicitly set cursor to the first position
+    textareaEl.setSelectionRange(0, 0);
+    
+    // Reset scroll positions of both textarea and highlight overlay to top-left
+    textareaEl.scrollTop = 0;
+    textareaEl.scrollLeft = 0;
+    if (highlightEl) {
+      highlightEl.scrollTop = 0;
+      highlightEl.scrollLeft = 0;
+    }
+    
     textareaEl.focus();
   });
 
