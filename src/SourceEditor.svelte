@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy, tick } from "svelte";
+  import { onMount } from "svelte";
   import hljs from "highlight.js/lib/core";
   import markdown_lang from "highlight.js/lib/languages/markdown";
   import "highlight.js/styles/github.css";
@@ -58,6 +58,33 @@
     onChange?.(val);
   }
 
+  function handleKeydown(event) {
+    if (event.key !== "Enter" || !textareaEl) return;
+
+    event.preventDefault();
+
+    const currentValue = textareaEl.value;
+    const selectionStart = textareaEl.selectionStart;
+    const selectionEnd = textareaEl.selectionEnd;
+    const lineStart = currentValue.lastIndexOf("\n", selectionStart - 1) + 1;
+    const nextLineBreak = currentValue.indexOf("\n", selectionEnd);
+    const lineEnd = nextLineBreak === -1 ? currentValue.length : nextLineBreak;
+    const currentLine = currentValue.slice(lineStart, lineEnd);
+
+    if (selectionStart === selectionEnd && currentLine.trim() === "" && currentLine.length > 0) {
+      const nextValue = `${currentValue.slice(0, lineStart)}\n${currentValue.slice(lineEnd)}`;
+      updateValue(nextValue, lineStart + 1);
+      return;
+    }
+
+    const indentation = currentLine.match(/^[\t ]*/)?.[0] ?? "";
+    const insertion = `\n${indentation}`;
+    const nextValue =
+      currentValue.slice(0, selectionStart) + insertion + currentValue.slice(selectionEnd);
+
+    updateValue(nextValue, selectionStart + insertion.length);
+  }
+
   function handleScroll() {
     if (highlightEl && textareaEl) {
       highlightEl.scrollTop = textareaEl.scrollTop;
@@ -86,6 +113,15 @@
     const nextOffset = Number.isFinite(offset) ? offset : 0;
     return Math.max(0, Math.min(max, nextOffset));
   }
+
+  function updateValue(nextValue, cursorOffset) {
+    textareaEl.value = nextValue;
+    textareaEl.setSelectionRange(cursorOffset, cursorOffset);
+    skipNextEffect = true;
+    renderHighlight(nextValue);
+    onChange?.(nextValue);
+    handleScroll();
+  }
 </script>
 
 <div class="source-editor-wrap">
@@ -96,6 +132,7 @@
     spellcheck="false"
     autocapitalize="off"
     autocomplete="off"
+    onkeydown={handleKeydown}
     oninput={handleInput}
     onscroll={handleScroll}
   ></textarea>
