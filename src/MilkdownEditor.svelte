@@ -18,6 +18,7 @@
   let lastExternalValue = $state("");
   let debounceTimer;
   let externalSyncTarget = null;
+  let ignoreInitialMarkdownUpdate = true;
   let markerSequence = 0;
   let pendingSourceOffset = null;
 
@@ -37,6 +38,12 @@
 
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, markdown) => {
+        if (ignoreInitialMarkdownUpdate) {
+          ignoreInitialMarkdownUpdate = false;
+          lastExternalValue = markdown;
+          return;
+        }
+
         // Ignore the first update after an external replaceAll() call.
         // Milkdown may normalize tables or spacing, but that echo should not
         // overwrite the active source textarea while the user is typing.
