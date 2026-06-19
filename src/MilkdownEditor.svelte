@@ -319,14 +319,19 @@
   }
 
   .milkdown-wrap :global(.ProseMirror) {
-    padding: 12px;
+    padding: 18px 22px 24px;
     min-height: 100%;
     white-space: pre-wrap;
     outline: none;
+    color: var(--text);
+    font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    font-size: 1rem;
+    line-height: 1.72;
+    text-rendering: optimizeLegibility;
   }
 
   .milkdown-wrap.is-editable :global(.ProseMirror) {
-    padding: 16px 24px 24px 104px;
+    padding: 20px 28px 28px 104px;
   }
 
   .milkdown-wrap.is-editable :global(.milkdown-block-handle) {
@@ -336,19 +341,161 @@
   .milkdown-wrap :global(.ProseMirror pre) {
     background: #f7f7f8;
     color: #1f2328;
-    margin-top: 20px;
-    margin-bottom: 20px;
+    margin: 1.5rem 0;
+    padding: 1rem 1.1rem;
+    border: 1px solid #e6e8eb;
+    border-radius: 6px;
+    overflow-x: auto;
   }
 
   .milkdown-wrap :global(.ProseMirror code) {
     background: #f7f7f8;
     color: #1f2328;
+    padding: 0.12rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.92em;
   }
 
   .milkdown-wrap :global(.ProseMirror pre code),
   .milkdown-wrap :global(.ProseMirror pre .hljs) {
     background: transparent;
     color: inherit;
+    padding: 0;
+  }
+
+  .milkdown-wrap :global(.ProseMirror > :first-child) {
+    margin-top: 0;
+  }
+
+  .milkdown-wrap :global(.ProseMirror > :last-child) {
+    margin-bottom: 0;
+  }
+
+  .milkdown-wrap :global(.ProseMirror p) {
+    margin: 0.63rem 0;
+  }
+
+  .milkdown-wrap :global(.ProseMirror h1),
+  .milkdown-wrap :global(.ProseMirror h2),
+  .milkdown-wrap :global(.ProseMirror h3),
+  .milkdown-wrap :global(.ProseMirror h4),
+  .milkdown-wrap :global(.ProseMirror h5),
+  .milkdown-wrap :global(.ProseMirror h6) {
+    margin-top: 1.65rem;
+    margin-bottom: 0.55rem;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-weight: 650;
+    line-height: 1.22;
+    letter-spacing: -0.02em;
+    color: #111827;
+  }
+
+  .milkdown-wrap :global(.ProseMirror h1) {
+    font-size: 1.9rem;
+  }
+
+  .milkdown-wrap :global(.ProseMirror h2) {
+    font-size: 1.55rem;
+  }
+
+  .milkdown-wrap :global(.ProseMirror h3) {
+    font-size: 1.28rem;
+  }
+
+  .milkdown-wrap :global(.ProseMirror h4) {
+    font-size: 1.12rem;
+  }
+
+  .milkdown-wrap :global(.ProseMirror h5) {
+    font-size: 1rem;
+  }
+
+  .milkdown-wrap :global(.ProseMirror h6) {
+    font-size: 0.92rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .milkdown-wrap :global(.ProseMirror h1 + p),
+  .milkdown-wrap :global(.ProseMirror h2 + p),
+  .milkdown-wrap :global(.ProseMirror h3 + p),
+  .milkdown-wrap :global(.ProseMirror h4 + p),
+  .milkdown-wrap :global(.ProseMirror h5 + p),
+  .milkdown-wrap :global(.ProseMirror h6 + p) {
+    margin-top: 0;
+  }
+
+  .milkdown-wrap :global(.ProseMirror ul),
+  .milkdown-wrap :global(.ProseMirror ol) {
+    margin: 1rem 0 1.15rem;
+    padding-left: 1.5rem;
+  }
+
+  .milkdown-wrap :global(.ProseMirror li) {
+    margin: 0;
+    padding-left: 0.2rem;
+  }
+
+  .milkdown-wrap :global(.ProseMirror li p) {
+    margin: 0;
+  }
+
+  .milkdown-wrap :global(.ProseMirror li > ul),
+  .milkdown-wrap :global(.ProseMirror li > ol) {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .milkdown-wrap :global(.ProseMirror table) {
+    width: 100%;
+    margin: 1.4rem 0 1.5rem;
+    border-collapse: collapse;
+    border-spacing: 0;
+    font-size: 0.96rem;
+  }
+
+  .milkdown-wrap :global(.ProseMirror th),
+  .milkdown-wrap :global(.ProseMirror td) {
+    border: 1px solid #dde2e7;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .milkdown-wrap :global(.ProseMirror th) {
+    background: #f8fafb;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-weight: 600;
+  }
+
+  .milkdown-wrap :global(.ProseMirror th p),
+  .milkdown-wrap :global(.ProseMirror td p) {
+    margin: 0;
+  }
+
+  .milkdown-wrap :global(.ProseMirror blockquote) {
+    margin: 1.2rem 0;
+    padding: 0.1rem 0 0.1rem 1rem;
+    border-left: 3px solid #d9dee5;
+    color: #4b5563;
+  }
+
+  .milkdown-wrap :global(.ProseMirror hr) {
+    margin: 1.6rem 0;
+    border: 0;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .milkdown-wrap :global(.ProseMirror a) {
+    color: #174a7c;
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.16em;
+  }
+
+  .milkdown-wrap :global(.ProseMirror img) {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 1.25rem auto;
   }
 
   /* Remove any extra border from crepe frame theme */

@@ -9,4 +9,5 @@
 - Use `crepe.on(listener => listener.markdownUpdated(...))` to listen for changes from the Milkdown side.
 - Prefer small, focused edits and keep the visual style simple, clear and accessible.
 - Do not use esm.sh or CDN imports for Milkdown. All dependencies come from npm.
+- If it was necessary to create or modify resources that do not comply with the AGENTS.md guidelines, update the AGENTS.md accordingly. If necessary, update the README.md as well.
 - Bump the app version whenever behavior is implemented or fixed, following Semantic Versioning 2.0.0.
