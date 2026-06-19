@@ -324,7 +324,7 @@
     white-space: pre-wrap;
     outline: none;
     color: var(--text);
-    font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    font-family: var(--font-preview);
     font-size: 1rem;
     line-height: 1.72;
     text-rendering: optimizeLegibility;
@@ -383,7 +383,7 @@
   .milkdown-wrap :global(.ProseMirror h6) {
     margin-top: 1.65rem;
     margin-bottom: 0.55rem;
-    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-family: var(--font-preview);
     font-weight: 650;
     line-height: 1.22;
     letter-spacing: -0.02em;
@@ -463,7 +463,7 @@
 
   .milkdown-wrap :global(.ProseMirror th) {
     background: #f8fafb;
-    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-family: var(--font-preview);
     font-weight: 600;
   }
 
