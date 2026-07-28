@@ -38,24 +38,23 @@
 
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, markdown) => {
+        const unescaped = unescapeMarkdown(markdown);
+
         if (ignoreInitialMarkdownUpdate) {
           ignoreInitialMarkdownUpdate = false;
-          lastExternalValue = markdown;
+          lastExternalValue = unescaped;
           return;
         }
 
-        // Ignore the first update after an external replaceAll() call.
-        // Milkdown may normalize tables or spacing, but that echo should not
-        // overwrite the active source textarea while the user is typing.
         if (externalSyncTarget !== null) {
           externalSyncTarget = null;
-          lastExternalValue = markdown;
+          lastExternalValue = unescaped;
           return;
         }
 
         externalSyncTarget = null;
-        lastExternalValue = markdown;
-        onChange?.(markdown);
+        lastExternalValue = unescaped;
+        onChange?.(unescaped);
       });
     });
 
@@ -122,6 +121,34 @@
 
   function normalizeMarkdown(md) {
     return (md || "").trim().replace(/\r\n/g, "\n");
+  }
+
+  function unescapeMarkdown(md) {
+    if (!md) return "";
+    const lines = md.split("\n");
+    let inCodeFence = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trimStart();
+      if (trimmed.startsWith("```")) {
+        inCodeFence = !inCodeFence;
+        continue;
+      }
+      if (inCodeFence) continue;
+
+      lines[i] = unescapeInlineLine(lines[i]);
+    }
+    return lines.join("\n");
+  }
+
+  function unescapeInlineLine(line) {
+    const parts = line.split(/(`[^`]*`)/);
+    return parts
+      .map((part, i) => {
+        if (i % 2 === 1) return part;
+        return part.replace(/\\([_*])/g, "$1");
+      })
+      .join("");
   }
 
   function restorePendingSourceOffset() {
@@ -289,22 +316,13 @@
     return Math.max(0, Math.min(max, nextOffset));
   }
 
-  function handlePaste() {
-    setTimeout(() => {
-      if (!crepe || !ready) return;
-      const md = crepe.getMarkdown();
-      externalSyncTarget = null;
-      lastExternalValue = md;
-      onChange?.(md);
-    }, 50);
-  }
+
 </script>
 
 <div
   class="milkdown-wrap"
   class:is-editable={editable}
   bind:this={containerEl}
-  onpastecapture={handlePaste}
 ></div>
 
 <style>
