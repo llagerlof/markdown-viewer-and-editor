@@ -288,12 +288,23 @@
     const nextOffset = Number.isFinite(offset) ? offset : 0;
     return Math.max(0, Math.min(max, nextOffset));
   }
+
+  function handlePaste() {
+    setTimeout(() => {
+      if (!crepe || !ready) return;
+      const md = crepe.getMarkdown();
+      externalSyncTarget = null;
+      lastExternalValue = md;
+      onChange?.(md);
+    }, 50);
+  }
 </script>
 
 <div
   class="milkdown-wrap"
   class:is-editable={editable}
   bind:this={containerEl}
+  onpastecapture={handlePaste}
 ></div>
 
 <style>
