@@ -221,6 +221,10 @@ body {
   flex: 1;
 }
 
+.workspace.is-source-only .panel-source {
+  flex: 1;
+}
+
 .panel-heading {
   display: flex;
   align-items: center;

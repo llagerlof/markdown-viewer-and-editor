@@ -4,6 +4,7 @@
 export const STORAGE_KEYS = {
   content: "markdown-editor-content",
   splitRatio: "markdown-editor-split-ratio",
+  // Holds the full view ("source", "preview" or ""); the key name is kept for old saves
   fullWidth: "markdown-editor-full-width",
   readingWidth: "markdown-editor-reading-width",
   fileName: "markdown-editor-file-name",

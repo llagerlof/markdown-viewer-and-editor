@@ -22,13 +22,15 @@
     download: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
     edit: "M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z",
     expand: "M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3",
+    code: "M16 18l6-6-6-6M8 6l-6 6 6 6",
     collapse: "M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3",
   };
 
   let markdown = $state(readStorage(STORAGE_KEYS.content, ""));
   let fileName = $state(readStorage(STORAGE_KEYS.fileName, DEFAULT_FILE_NAME));
   let realtimeEditorEnabled = $state(false);
-  let fullWidth = $state(readStorage(STORAGE_KEYS.fullWidth) === "true");
+  // Which pane fills the workspace: "source", "preview" or null for the split view
+  let fullView = $state(parseFullView(readStorage(STORAGE_KEYS.fullWidth)));
   let splitRatio = $state(parseSplitRatio(readStorage(STORAGE_KEYS.splitRatio)));
   let readingWidth = $state(parseReadingWidth(readStorage(STORAGE_KEYS.readingWidth)));
   let saveState = $state("saved");
@@ -59,6 +61,12 @@
   function parseSplitRatio(storedValue) {
     const ratio = Number(storedValue);
     return Number.isFinite(ratio) && ratio >= 20 && ratio <= 80 ? ratio : DEFAULT_SPLIT;
+  }
+
+  function parseFullView(storedValue) {
+    // "true" is the legacy value from when only the preview could be full width
+    if (storedValue === "true" || storedValue === "preview") return "preview";
+    return storedValue === "source" ? "source" : null;
   }
 
   function parseReadingWidth(storedValue) {
@@ -116,6 +124,7 @@
 
   async function toggleRealtimeEditor() {
     if (!realtimeEditorEnabled) {
+      if (fullView === "source") setFullView(null);
       initialRealtimeSourceOffset = sourceEditor?.getCursorOffset() ?? 0;
       realtimeEditorEnabled = true;
       return;
@@ -124,15 +133,21 @@
     const sourceOffset = milkdownEditor?.getSourceOffset() ?? 0;
     realtimeEditorEnabled = false;
 
-    if (!fullWidth) {
+    if (fullView !== "preview") {
       await tick();
       sourceEditor?.setCursorOffset(sourceOffset);
     }
   }
 
-  function setFullWidth(enabled) {
-    fullWidth = enabled;
-    writeStorage(STORAGE_KEYS.fullWidth, enabled);
+  async function setFullView(view) {
+    // Leaving the preview editor hidden would strand its edits and cursor
+    if (view === "source" && realtimeEditorEnabled) await toggleRealtimeEditor();
+    fullView = view;
+    writeStorage(STORAGE_KEYS.fullWidth, view ?? "");
+  }
+
+  function toggleFullView(view) {
+    setFullView(fullView === view ? null : view);
   }
 
   function setSplitRatio(ratio) {
@@ -141,8 +156,8 @@
   }
 
   function handleWindowKeydown(event) {
-    if (event.key === "Escape" && fullWidth && !event.defaultPrevented) {
-      setFullWidth(false);
+    if (event.key === "Escape" && fullView && !event.defaultPrevented) {
+      setFullView(null);
     }
   }
 
@@ -245,12 +260,26 @@
         <button
           type="button"
           class="btn btn-toggle"
-          aria-pressed={fullWidth}
-          onclick={() => setFullWidth(!fullWidth)}
-          title={fullWidth ? "Show the source pane (Esc)" : "Show only the rendered Markdown"}
+          aria-pressed={fullView === "source"}
+          onclick={() => toggleFullView("source")}
+          title={fullView === "source"
+            ? "Show the rendered Markdown pane (Esc)"
+            : "Show only the Markdown source"}
         >
-          {@render icon(fullWidth ? "collapse" : "expand")}
-          <span class="btn-label">Full width</span>
+          {@render icon(fullView === "source" ? "collapse" : "code")}
+          <span class="btn-label">Full source</span>
+        </button>
+        <button
+          type="button"
+          class="btn btn-toggle"
+          aria-pressed={fullView === "preview"}
+          onclick={() => toggleFullView("preview")}
+          title={fullView === "preview"
+            ? "Show the source pane (Esc)"
+            : "Show only the rendered Markdown"}
+        >
+          {@render icon(fullView === "preview" ? "collapse" : "expand")}
+          <span class="btn-label">Full preview</span>
         </button>
       </div>
     </div>
@@ -268,7 +297,7 @@
 
   <main
     class="workspace"
-    class:is-full-width={fullWidth}
+    class:is-source-only={fullView === "source"}
     style:--split="{splitRatio}%"
     aria-label="Markdown workspace"
   >
@@ -276,7 +305,7 @@
       class="panel panel-source"
       class:is-drop-target={draggingFile}
       aria-labelledby="source-title"
-      hidden={fullWidth}
+      hidden={fullView === "preview"}
       ondragover={handleDragOver}
       ondragleave={handleDragLeave}
       ondrop={handleDrop}
@@ -293,7 +322,7 @@
       />
     </section>
 
-    {#if !fullWidth}
+    {#if !fullView}
       <Splitter
         ratio={splitRatio}
         defaultRatio={DEFAULT_SPLIT}
@@ -302,10 +331,14 @@
       />
     {/if}
 
-    <section class="panel panel-preview" aria-labelledby="preview-title">
+    <section
+      class="panel panel-preview"
+      aria-labelledby="preview-title"
+      hidden={fullView === "source"}
+    >
       <div class="panel-heading">
         <h2 id="preview-title">Rendered Markdown</h2>
-        {#if fullWidth}
+        {#if fullView === "preview"}
           <div class="width-control" role="group" aria-label="Reading column width">
             <label for="reading-width">Width</label>
             <input
@@ -338,7 +371,7 @@
           bind:this={milkdownEditor}
           value={markdown}
           editable={realtimeEditorEnabled}
-          centered={fullWidth}
+          centered={fullView === "preview"}
           readingWidth="{readingWidth.value}{readingWidth.unit}"
           initialSourceOffset={initialRealtimeSourceOffset}
           onChange={setMarkdown}
