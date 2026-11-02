@@ -14,6 +14,7 @@
     value = "",
     editable = false,
     centered = false,
+    readingWidth = null,
     initialSourceOffset = null,
     onChange,
   } = $props();
@@ -291,6 +292,7 @@
   class="milkdown-wrap"
   class:is-editable={editable}
   class:is-centered={centered}
+  style:--reading-width={readingWidth}
   bind:this={containerEl}
 ></div>
 
@@ -342,12 +344,12 @@
   }
 
   .milkdown-wrap.is-centered :global(.ProseMirror) {
-    max-width: calc(var(--reading-width) + 56px);
+    max-width: min(100%, calc(var(--reading-width) + 56px));
     margin-inline: auto;
   }
 
   .milkdown-wrap.is-centered.is-editable :global(.ProseMirror) {
-    max-width: calc(var(--reading-width) + 132px);
+    max-width: min(100%, calc(var(--reading-width) + 132px));
   }
 
   .milkdown-wrap.is-editable :global(.milkdown-block-handle) {

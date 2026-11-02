@@ -11,6 +11,12 @@
   const SAVE_DELAY = 500;
   const DEFAULT_SPLIT = 40;
   const DEFAULT_FILE_NAME = "document.md";
+  // Width of the rendered column in full-width mode, per unit
+  const READING_WIDTH_LIMITS = {
+    "%": { min: 20, max: 100, step: 5, fallback: 70 },
+    px: { min: 300, max: 4000, step: 50, fallback: 900 },
+  };
+  const DEFAULT_READING_WIDTH = { value: 70, unit: "%" };
   const ICONS = {
     open: "M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2",
     download: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
@@ -24,6 +30,7 @@
   let realtimeEditorEnabled = $state(false);
   let fullWidth = $state(readStorage(STORAGE_KEYS.fullWidth) === "true");
   let splitRatio = $state(parseSplitRatio(readStorage(STORAGE_KEYS.splitRatio)));
+  let readingWidth = $state(parseReadingWidth(readStorage(STORAGE_KEYS.readingWidth)));
   let saveState = $state("saved");
   let draggingFile = $state(false);
   let sourceEditor = $state(null);
@@ -52,6 +59,40 @@
   function parseSplitRatio(storedValue) {
     const ratio = Number(storedValue);
     return Number.isFinite(ratio) && ratio >= 20 && ratio <= 80 ? ratio : DEFAULT_SPLIT;
+  }
+
+  function parseReadingWidth(storedValue) {
+    const match = /^(\d+(?:\.\d+)?)(%|px)$/.exec(storedValue ?? "");
+    if (!match) return { ...DEFAULT_READING_WIDTH };
+    const unit = match[2];
+    const { min, max } = READING_WIDTH_LIMITS[unit];
+    const value = Number(match[1]);
+    return value >= min && value <= max ? { value, unit } : { ...DEFAULT_READING_WIDTH };
+  }
+
+  function setReadingWidth(value, unit) {
+    const { min, max } = READING_WIDTH_LIMITS[unit];
+    readingWidth = { value: Math.round(Math.min(max, Math.max(min, value))), unit };
+    writeStorage(STORAGE_KEYS.readingWidth, `${readingWidth.value}${readingWidth.unit}`);
+  }
+
+  function handleReadingWidthInput(event) {
+    // Apply valid values while typing; out-of-range ones are clamped on change
+    const value = event.currentTarget.valueAsNumber;
+    const { min, max } = READING_WIDTH_LIMITS[readingWidth.unit];
+    if (value >= min && value <= max) setReadingWidth(value, readingWidth.unit);
+  }
+
+  function handleReadingWidthChange(event) {
+    const value = event.currentTarget.valueAsNumber;
+    const { fallback } = READING_WIDTH_LIMITS[readingWidth.unit];
+    setReadingWidth(Number.isFinite(value) ? value : fallback, readingWidth.unit);
+    event.currentTarget.value = readingWidth.value;
+  }
+
+  function handleReadingUnitChange(event) {
+    const unit = event.currentTarget.value;
+    setReadingWidth(READING_WIDTH_LIMITS[unit].fallback, unit);
   }
 
   function scheduleSave() {
@@ -264,6 +305,30 @@
     <section class="panel panel-preview" aria-labelledby="preview-title">
       <div class="panel-heading">
         <h2 id="preview-title">Rendered Markdown</h2>
+        {#if fullWidth}
+          <div class="width-control" role="group" aria-label="Reading column width">
+            <label for="reading-width">Width</label>
+            <input
+              id="reading-width"
+              type="number"
+              inputmode="numeric"
+              min={READING_WIDTH_LIMITS[readingWidth.unit].min}
+              max={READING_WIDTH_LIMITS[readingWidth.unit].max}
+              step={READING_WIDTH_LIMITS[readingWidth.unit].step}
+              value={readingWidth.value}
+              oninput={handleReadingWidthInput}
+              onchange={handleReadingWidthChange}
+            />
+            <select
+              aria-label="Width unit"
+              value={readingWidth.unit}
+              onchange={handleReadingUnitChange}
+            >
+              <option value="%">%</option>
+              <option value="px">px</option>
+            </select>
+          </div>
+        {/if}
         <span class="chip" class:chip-active={realtimeEditorEnabled}>
           {realtimeEditorEnabled ? "Editing" : "Read-only"}
         </span>
@@ -274,6 +339,7 @@
           value={markdown}
           editable={realtimeEditorEnabled}
           centered={fullWidth}
+          readingWidth="{readingWidth.value}{readingWidth.unit}"
           initialSourceOffset={initialRealtimeSourceOffset}
           onChange={setMarkdown}
         />
