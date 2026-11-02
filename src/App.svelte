@@ -2,102 +2,294 @@
   import { tick, onDestroy } from "svelte";
   import SourceEditor from "./SourceEditor.svelte";
   import MilkdownEditor from "./MilkdownEditor.svelte";
+  import Splitter from "./Splitter.svelte";
+  import { STORAGE_KEYS, readStorage, writeStorage } from "./storage.js";
   import "./app.css";
   import packageInfo from "../package.json";
 
   const version = packageInfo.version;
-  let markdown = $state(
-    (typeof window !== "undefined" && localStorage.getItem("markdown-editor-content")) || ""
-  );
+  const SAVE_DELAY = 500;
+  const DEFAULT_SPLIT = 40;
+  const DEFAULT_FILE_NAME = "document.md";
+  const ICONS = {
+    open: "M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2",
+    download: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
+    edit: "M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z",
+    expand: "M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3",
+    collapse: "M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3",
+  };
+
+  let markdown = $state(readStorage(STORAGE_KEYS.content, ""));
+  let fileName = $state(readStorage(STORAGE_KEYS.fileName, DEFAULT_FILE_NAME));
   let realtimeEditorEnabled = $state(false);
+  let fullWidth = $state(readStorage(STORAGE_KEYS.fullWidth) === "true");
+  let splitRatio = $state(parseSplitRatio(readStorage(STORAGE_KEYS.splitRatio)));
+  let saveState = $state("saved");
+  let draggingFile = $state(false);
   let sourceEditor = $state(null);
   let milkdownEditor = $state(null);
+  let fileInput;
   let initialRealtimeSourceOffset = $state(0);
+  let saveTimeout = null;
 
-  let saveTimeout;
-  $effect(() => {
-    const currentMarkdown = markdown;
-    clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(() => {
-      localStorage.setItem("markdown-editor-content", currentMarkdown);
-    }, 500);
+  const stats = $derived.by(() => {
+    const trimmed = markdown.trim();
+    return {
+      words: trimmed ? trimmed.split(/\s+/).length : 0,
+      characters: markdown.length,
+      lines: markdown ? markdown.split("\n").length : 0,
+    };
   });
 
-  onDestroy(() => {
-    clearTimeout(saveTimeout);
-  });
+  const saveLabel = $derived(
+    { saving: "Saving…", saved: "Saved in this browser", error: "Not saved (storage unavailable)" }[
+      saveState
+    ]
+  );
 
-  function handleSourceChange(newMarkdown) {
-    markdown = newMarkdown;
+  onDestroy(flushSave);
+
+  function parseSplitRatio(storedValue) {
+    const ratio = Number(storedValue);
+    return Number.isFinite(ratio) && ratio >= 20 && ratio <= 80 ? ratio : DEFAULT_SPLIT;
+  }
+
+  function scheduleSave() {
+    saveState = "saving";
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(flushSave, SAVE_DELAY);
+  }
+
+  function flushSave() {
+    if (saveTimeout === null) return;
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+    saveState = writeStorage(STORAGE_KEYS.content, markdown) ? "saved" : "error";
+  }
+
+  function setMarkdown(nextMarkdown) {
+    if (nextMarkdown === markdown) return;
+    markdown = nextMarkdown;
+    scheduleSave();
   }
 
   async function toggleRealtimeEditor() {
     if (!realtimeEditorEnabled) {
-      initialRealtimeSourceOffset = sourceEditor?.getCursorOffset?.() ?? 0;
+      initialRealtimeSourceOffset = sourceEditor?.getCursorOffset() ?? 0;
       realtimeEditorEnabled = true;
       return;
     }
 
-    const sourceOffset = milkdownEditor?.getSourceOffset?.() ?? 0;
+    const sourceOffset = milkdownEditor?.getSourceOffset() ?? 0;
     realtimeEditorEnabled = false;
 
-    if (!realtimeEditorEnabled) {
+    if (!fullWidth) {
       await tick();
-      sourceEditor?.setCursorOffset?.(sourceOffset);
+      sourceEditor?.setCursorOffset(sourceOffset);
     }
+  }
+
+  function setFullWidth(enabled) {
+    fullWidth = enabled;
+    writeStorage(STORAGE_KEYS.fullWidth, enabled);
+  }
+
+  function setSplitRatio(ratio) {
+    splitRatio = ratio;
+    writeStorage(STORAGE_KEYS.splitRatio, ratio);
+  }
+
+  function handleWindowKeydown(event) {
+    if (event.key === "Escape" && fullWidth && !event.defaultPrevented) {
+      setFullWidth(false);
+    }
+  }
+
+  async function loadFile(file) {
+    if (!file) return;
+    if (markdown.trim() && !confirm(`Replace the current content with "${file.name}"?`)) return;
+
+    try {
+      setMarkdown(await file.text());
+      fileName = file.name;
+      writeStorage(STORAGE_KEYS.fileName, file.name);
+    } catch (error) {
+      console.error("Failed to read the file:", error);
+      alert(`Could not read "${file.name}".`);
+    }
+  }
+
+  function handleFileInput(event) {
+    loadFile(event.currentTarget.files?.[0]);
+    // Allow opening the same file again
+    event.currentTarget.value = "";
+  }
+
+  function downloadMarkdown() {
+    const name = /\.(md|markdown)$/i.test(fileName) ? fileName : `${fileName}.md`;
+    const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function hasFiles(event) {
+    return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+  }
+
+  function handleDragOver(event) {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    draggingFile = true;
+  }
+
+  function handleDragLeave(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      draggingFile = false;
+    }
+  }
+
+  function handleDrop(event) {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    draggingFile = false;
+    loadFile(event.dataTransfer.files[0]);
   }
 </script>
 
+<svelte:window onkeydown={handleWindowKeydown} onpagehide={flushSave} />
+
+{#snippet icon(name)}
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+    <path d={ICONS[name]} />
+  </svg>
+{/snippet}
+
 <div class="app-shell">
   <header class="app-header">
-    <div>
-      <p class="eyebrow">Version {version}</p>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">M↓</span>
       <h1>Markdown Viewer and Editor</h1>
+      <span class="version-badge" title="Version {version}">v{version}</span>
     </div>
-    <p class="app-summary">
-      Write Markdown in the source pane on the left. The live view will be displayed on the right pane.
-    </p>
-  </header>
 
-  <main class="workspace" aria-label="Markdown workspace">
-    <section class="panel panel-source" aria-labelledby="source-title">
-      <div class="panel-heading">
-        <h2 id="source-title">Markdown Source</h2>
-        <p>Source editor with Markdown syntax highlighting.</p>
+    <div class="toolbar" role="toolbar" aria-label="Document actions">
+      <div class="toolbar-group">
+        <button type="button" class="btn" onclick={() => fileInput.click()} title="Open a Markdown file">
+          {@render icon("open")}
+          <span class="btn-label">Open</span>
+        </button>
+        <button type="button" class="btn" onclick={downloadMarkdown} title="Download as {fileName}">
+          {@render icon("download")}
+          <span class="btn-label">Download</span>
+        </button>
       </div>
-      <SourceEditor bind:this={sourceEditor} value={markdown} onChange={handleSourceChange} />
-    </section>
 
-    <section class="panel panel-preview" aria-labelledby="preview-title">
-      <div class="panel-heading panel-heading-split">
-        <div>
-          <h2 id="preview-title">Rendered Markdown</h2>
-          <p>
-            {realtimeEditorEnabled
-              ? "Editable preview with formatting bar."
-              : "Read-only preview."}
-          </p>
-        </div>
+      <span class="toolbar-divider" aria-hidden="true"></span>
+
+      <div class="toolbar-group">
         <button
           type="button"
-          class="preview-toggle"
+          class="btn btn-toggle"
           aria-pressed={realtimeEditorEnabled}
           onclick={toggleRealtimeEditor}
+          title="Edit the rendered Markdown directly"
         >
-          {realtimeEditorEnabled
-            ? "Disable realtime editor"
-            : "Enable realtime editor"}
+          {@render icon("edit")}
+          <span class="btn-label">Edit preview</span>
         </button>
+        <button
+          type="button"
+          class="btn btn-toggle"
+          aria-pressed={fullWidth}
+          onclick={() => setFullWidth(!fullWidth)}
+          title={fullWidth ? "Show the source pane (Esc)" : "Show only the rendered Markdown"}
+        >
+          {@render icon(fullWidth ? "collapse" : "expand")}
+          <span class="btn-label">Full width</span>
+        </button>
+      </div>
+    </div>
+
+    <input
+      bind:this={fileInput}
+      class="visually-hidden"
+      type="file"
+      accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain"
+      tabindex="-1"
+      aria-hidden="true"
+      onchange={handleFileInput}
+    />
+  </header>
+
+  <main
+    class="workspace"
+    class:is-full-width={fullWidth}
+    style:--split="{splitRatio}%"
+    aria-label="Markdown workspace"
+  >
+    <section
+      class="panel panel-source"
+      class:is-drop-target={draggingFile}
+      aria-labelledby="source-title"
+      hidden={fullWidth}
+      ondragover={handleDragOver}
+      ondragleave={handleDragLeave}
+      ondrop={handleDrop}
+    >
+      <div class="panel-heading">
+        <h2 id="source-title">Markdown Source</h2>
+        <span class="panel-hint">Drop a .md file here</span>
+      </div>
+      <SourceEditor
+        bind:this={sourceEditor}
+        value={markdown}
+        labelledby="source-title"
+        onChange={setMarkdown}
+      />
+    </section>
+
+    {#if !fullWidth}
+      <Splitter
+        ratio={splitRatio}
+        defaultRatio={DEFAULT_SPLIT}
+        label="Resize panes"
+        onChange={setSplitRatio}
+      />
+    {/if}
+
+    <section class="panel panel-preview" aria-labelledby="preview-title">
+      <div class="panel-heading">
+        <h2 id="preview-title">Rendered Markdown</h2>
+        <span class="chip" class:chip-active={realtimeEditorEnabled}>
+          {realtimeEditorEnabled ? "Editing" : "Read-only"}
+        </span>
       </div>
       {#key realtimeEditorEnabled}
         <MilkdownEditor
           bind:this={milkdownEditor}
           value={markdown}
           editable={realtimeEditorEnabled}
+          centered={fullWidth}
           initialSourceOffset={initialRealtimeSourceOffset}
-          onChange={handleSourceChange}
+          onChange={setMarkdown}
         />
       {/key}
     </section>
   </main>
+
+  <footer class="status-bar">
+    <span class="status-file" title={fileName}>{fileName}</span>
+    <span class="status-stats">
+      <span>{stats.words.toLocaleString()} words</span>
+      <span>{stats.characters.toLocaleString()} characters</span>
+      <span>{stats.lines.toLocaleString()} lines</span>
+    </span>
+    <span class="status-save" class:is-error={saveState === "error"}>
+      {saveLabel}
+    </span>
+  </footer>
 </div>

@@ -1,91 +1,83 @@
 <script>
   import { onMount } from "svelte";
   import hljs from "highlight.js/lib/core";
-  import markdown_lang from "highlight.js/lib/languages/markdown";
+  import markdownLanguage from "highlight.js/lib/languages/markdown";
   import "highlight.js/styles/github.css";
 
-  hljs.registerLanguage("markdown", markdown_lang);
+  hljs.registerLanguage("markdown", markdownLanguage);
 
-  let { value = "", onChange } = $props();
+  let { value = "", labelledby = undefined, onChange } = $props();
 
   let textareaEl;
   let highlightEl;
-  let skipNextEffect = false;
 
   onMount(() => {
     textareaEl.value = value;
     renderHighlight(value);
-    
-    // Explicitly set cursor to the first position
+
+    // Start at the top of the document with the cursor in the first position
     textareaEl.setSelectionRange(0, 0);
-    
-    // Reset scroll positions of both textarea and highlight overlay to top-left
-    textareaEl.scrollTop = 0;
-    textareaEl.scrollLeft = 0;
-    if (highlightEl) {
-      highlightEl.scrollTop = 0;
-      highlightEl.scrollLeft = 0;
-    }
-    
     textareaEl.focus();
   });
 
   $effect(() => {
-    // Update textarea when value changes externally (from Milkdown)
-    const v = value;
-    if (skipNextEffect) {
-      skipNextEffect = false;
-      return;
-    }
-    if (textareaEl && textareaEl.value !== v) {
-      textareaEl.value = v;
-      renderHighlight(v);
+    // Update the textarea when the value changes externally (Milkdown, file open)
+    const nextValue = value;
+    if (textareaEl && textareaEl.value !== nextValue) {
+      textareaEl.value = nextValue;
+      renderHighlight(nextValue);
+      syncScroll();
     }
   });
 
   function renderHighlight(text) {
     if (!highlightEl) return;
-    const escaped = text || "";
-    const result = hljs.highlight(escaped, { language: "markdown" });
-    // Append a newline so the pre/code always has room for the last line
+    const result = hljs.highlight(text || "", { language: "markdown" });
+    // Append a newline so the overlay always has room for the last line
     highlightEl.innerHTML = result.value + "\n";
   }
 
   function handleInput() {
-    const val = textareaEl.value;
-    skipNextEffect = true;
-    renderHighlight(val);
-    onChange?.(val);
+    const nextValue = textareaEl.value;
+    renderHighlight(nextValue);
+    syncScroll();
+    onChange?.(nextValue);
   }
 
   function handleKeydown(event) {
-    if (event.key !== "Enter" || !textareaEl) return;
+    if (event.key !== "Enter" || event.isComposing) return;
+    if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
 
     event.preventDefault();
 
     const currentValue = textareaEl.value;
-    const selectionStart = textareaEl.selectionStart;
-    const selectionEnd = textareaEl.selectionEnd;
+    const { selectionStart, selectionEnd } = textareaEl;
     const lineStart = currentValue.lastIndexOf("\n", selectionStart - 1) + 1;
     const nextLineBreak = currentValue.indexOf("\n", selectionEnd);
     const lineEnd = nextLineBreak === -1 ? currentValue.length : nextLineBreak;
     const currentLine = currentValue.slice(lineStart, lineEnd);
 
-    if (selectionStart === selectionEnd && currentLine.trim() === "" && currentLine.length > 0) {
-      const nextValue = `${currentValue.slice(0, lineStart)}\n${currentValue.slice(lineEnd)}`;
-      updateValue(nextValue, lineStart + 1);
+    // On a whitespace-only line, drop the indentation instead of repeating it
+    if (selectionStart === selectionEnd && currentLine.length > 0 && currentLine.trim() === "") {
+      insertText("\n", lineStart, lineEnd);
       return;
     }
 
     const indentation = currentLine.match(/^[\t ]*/)?.[0] ?? "";
-    const insertion = `\n${indentation}`;
-    const nextValue =
-      currentValue.slice(0, selectionStart) + insertion + currentValue.slice(selectionEnd);
-
-    updateValue(nextValue, selectionStart + insertion.length);
+    insertText(`\n${indentation}`, selectionStart, selectionEnd);
   }
 
-  function handleScroll() {
+  // Insert through the browser's editing pipeline so native undo/redo keeps working
+  function insertText(text, start, end) {
+    textareaEl.setSelectionRange(start, end);
+    const inserted = document.execCommand?.("insertText", false, text);
+    if (!inserted) {
+      textareaEl.setRangeText(text, start, end, "end");
+      handleInput();
+    }
+  }
+
+  function syncScroll() {
     if (highlightEl && textareaEl) {
       highlightEl.scrollTop = textareaEl.scrollTop;
       highlightEl.scrollLeft = textareaEl.scrollLeft;
@@ -105,22 +97,9 @@
     textareaEl.setSelectionRange(nextOffset, nextOffset);
   }
 
-  export function focus() {
-    textareaEl?.focus();
-  }
-
   function clampOffset(offset, max) {
     const nextOffset = Number.isFinite(offset) ? offset : 0;
     return Math.max(0, Math.min(max, nextOffset));
-  }
-
-  function updateValue(nextValue, cursorOffset) {
-    textareaEl.value = nextValue;
-    textareaEl.setSelectionRange(cursorOffset, cursorOffset);
-    skipNextEffect = true;
-    renderHighlight(nextValue);
-    onChange?.(nextValue);
-    handleScroll();
   }
 </script>
 
@@ -129,12 +108,13 @@
   <textarea
     bind:this={textareaEl}
     class="source-textarea"
+    aria-labelledby={labelledby}
     spellcheck="false"
     autocapitalize="off"
     autocomplete="off"
     onkeydown={handleKeydown}
     oninput={handleInput}
-    onscroll={handleScroll}
+    onscroll={syncScroll}
   ></textarea>
 </div>
 
@@ -142,10 +122,9 @@
   .source-editor-wrap {
     position: relative;
     flex: 1;
+    min-height: 0;
     overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-panel);
+    background: var(--surface);
   }
 
   .source-highlight,
@@ -153,42 +132,40 @@
     position: absolute;
     inset: 0;
     margin: 0;
-    padding: 12px;
-    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+    padding: 16px 18px;
+    font-family: var(--font-mono);
     font-size: 14px;
     line-height: 1.6;
     white-space: pre-wrap;
-    word-wrap: break-word;
-    overflow: auto;
+    overflow-wrap: break-word;
     tab-size: 2;
+    font-kerning: none;
+    font-variant-ligatures: none;
+    letter-spacing: 0;
+    /* Keep the same text width in both layers whether or not a scrollbar shows */
+    scrollbar-gutter: stable;
   }
 
   .source-highlight {
-    pointer-events: none;
     z-index: 0;
+    overflow: hidden;
+    color: var(--text);
+    pointer-events: none;
   }
 
   .source-textarea {
     z-index: 1;
+    overflow: auto;
     color: transparent;
-    caret-color: #333;
+    caret-color: var(--text-strong);
     background: transparent;
     border: none;
     outline: none;
     resize: none;
     -webkit-text-fill-color: transparent;
-    font-kerning: none;
-    font-variant-ligatures: none;
-    letter-spacing: 0;
   }
 
-  /* Make highlight visible underneath */
-  .source-highlight :global(code) {
-    font-family: inherit;
-    font-size: inherit;
-    line-height: inherit;
-    font-kerning: none;
-    font-variant-ligatures: none;
-    letter-spacing: 0;
+  .source-textarea::selection {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
   }
 </style>

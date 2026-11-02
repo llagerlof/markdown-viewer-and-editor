@@ -3,29 +3,45 @@
   import { Crepe, CrepeFeature } from "@milkdown/crepe";
   import { editorViewCtx, serializerCtx } from "@milkdown/kit/core";
   import { replaceAll } from "@milkdown/kit/utils";
-  import { TextSelection } from "@milkdown/prose/state";
+  import { TextSelection } from "@milkdown/kit/prose/state";
+  import { useHtmlRendering } from "./milkdown/htmlPlugin.js";
+  import { useTightListFix } from "./milkdown/listSpread.js";
+  import { unescapeMarkdown } from "./milkdown/unescape.js";
   import "@milkdown/crepe/theme/common/style.css";
   import "@milkdown/crepe/theme/frame.css";
 
-  let { value = "", editable = false, initialSourceOffset = null, onChange } = $props();
+  let {
+    value = "",
+    editable = false,
+    centered = false,
+    initialSourceOffset = null,
+    onChange,
+  } = $props();
 
-  const CURSOR_MARKER_PREFIX = "\uE000copilot-cursor-";
-  const CURSOR_MARKER_SUFFIX = "-anchor\uE001";
+  const CURSOR_MARKER_PREFIX = "\uE000cursor-marker-";
+  const CURSOR_MARKER_SUFFIX = "\uE001";
+  const SOURCE_SYNC_DELAY = 150;
 
   let containerEl;
   let crepe;
+  let createPromise;
   let ready = false;
-  let lastExternalValue = $state("");
+  let destroyed = false;
   let debounceTimer;
-  let externalSyncTarget = null;
-  let ignoreInitialMarkdownUpdate = true;
   let markerSequence = 0;
-  let pendingSourceOffset = null;
+  // Last markdown exchanged with the parent, to avoid echoing it back.
+  let lastExternalValue = null;
+  // Milkdown's serialization right after the last programmatic replaceAll.
+  // Updates equal to it are echoes of that sync, not user edits.
+  let lastAppliedMarkdown = null;
 
-  onMount(async () => {
+  onMount(() => {
+    const initialValue = value;
+    lastExternalValue = initialValue;
+
     crepe = new Crepe({
       root: containerEl,
-      defaultValue: value,
+      defaultValue: initialValue,
       features: {
         [CrepeFeature.CodeMirror]: false,
         [CrepeFeature.Latex]: false,
@@ -36,75 +52,58 @@
       },
     });
 
+    useHtmlRendering(crepe.editor);
+    useTightListFix(crepe.editor);
+
     crepe.on((listener) => {
-      listener.markdownUpdated((_ctx, markdown) => {
-        const unescaped = unescapeMarkdown(markdown);
+      listener.markdownUpdated((ctx, markdown) => {
+        // A read-only preview must never rewrite the user's source.
+        if (destroyed || !ready || !editable) return;
+        if (markdown === lastAppliedMarkdown) return;
 
-        if (ignoreInitialMarkdownUpdate) {
-          ignoreInitialMarkdownUpdate = false;
-          lastExternalValue = unescaped;
-          return;
-        }
-
-        if (externalSyncTarget !== null) {
-          externalSyncTarget = null;
-          lastExternalValue = unescaped;
-          return;
-        }
-
-        externalSyncTarget = null;
-        lastExternalValue = unescaped;
-        onChange?.(unescaped);
+        lastAppliedMarkdown = markdown;
+        const output = unescapeMarkdown(ctx, markdown);
+        lastExternalValue = output;
+        onChange?.(output);
       });
     });
 
     crepe.setReadonly(!editable);
 
-    await crepe.create();
-    ready = true;
-    lastExternalValue = value;
-    pendingSourceOffset = initialSourceOffset;
+    createPromise = crepe
+      .create()
+      .then(() => {
+        if (destroyed) return;
+        ready = true;
+        lastAppliedMarkdown = crepe.getMarkdown();
 
-    if (editable) {
-      restorePendingSourceOffset();
-    }
+        // The source may have changed while the editor was being created.
+        if (value !== initialValue) {
+          applyExternalValue(value);
+        }
+
+        if (editable) {
+          restoreCursor(initialSourceOffset);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to create the Milkdown editor:", error);
+      });
   });
 
   onDestroy(() => {
+    destroyed = true;
     clearTimeout(debounceTimer);
-    if (crepe) {
-      crepe.destroy();
-    }
+    createPromise?.finally(() => crepe?.destroy());
   });
 
   $effect(() => {
-    const v = value;
-    if (!ready || !crepe) return;
-    if (v === lastExternalValue) return;
-    lastExternalValue = v;
+    const nextValue = value;
+    if (!ready || nextValue === lastExternalValue) return;
+    lastExternalValue = nextValue;
 
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      const currentMarkdown = crepe.getMarkdown();
-      if (normalizeMarkdown(v) !== normalizeMarkdown(currentMarkdown)) {
-        externalSyncTarget = v;
-        crepe.editor.action(replaceAll(v));
-      }
-    }, 150);
-  });
-
-  $effect(() => {
-    const isEditable = editable;
-    if (!ready || !crepe) return;
-
-    crepe.setReadonly(!isEditable);
-
-    if (isEditable) {
-      pendingSourceOffset = initialSourceOffset;
-      requestAnimationFrame(() => {
-        restorePendingSourceOffset();
-      });
-    }
+    debounceTimer = setTimeout(() => applyExternalValue(nextValue), SOURCE_SYNC_DELAY);
   });
 
   export function getSourceOffset() {
@@ -114,59 +113,30 @@
     return getSourceOffsetForPosition(editorState, editorState.view.state.selection.from);
   }
 
-  export function setCursorFromSourceOffset(offset) {
-    pendingSourceOffset = offset;
-    restorePendingSourceOffset();
+  function applyExternalValue(markdown) {
+    if (destroyed || !ready) return;
+    lastExternalValue = markdown;
+
+    if (normalizeMarkdown(markdown) === normalizeMarkdown(crepe.getMarkdown())) return;
+
+    crepe.editor.action(replaceAll(markdown));
+    lastAppliedMarkdown = crepe.getMarkdown();
   }
 
   function normalizeMarkdown(md) {
-    return (md || "").trim().replace(/\r\n/g, "\n");
+    return (md || "").replace(/\r\n/g, "\n").trim();
   }
 
-  function unescapeMarkdown(md) {
-    if (!md) return "";
-    const lines = md.split("\n");
-    let inCodeFence = false;
-
-    for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i].trimStart();
-      if (trimmed.startsWith("```")) {
-        inCodeFence = !inCodeFence;
-        continue;
-      }
-      if (inCodeFence) continue;
-
-      lines[i] = unescapeInlineLine(lines[i]);
-    }
-    return lines.join("\n");
-  }
-
-  function unescapeInlineLine(line) {
-    const parts = line.split(/(`[^`]*`)/);
-    return parts
-      .map((part, i) => {
-        if (i % 2 === 1) return part;
-        return part.replace(/\\([_*])/g, "$1");
-      })
-      .join("");
-  }
-
-  function restorePendingSourceOffset() {
-    if (!editable) return;
-
-    if (pendingSourceOffset === null || pendingSourceOffset === undefined) {
+  function restoreCursor(offset) {
+    if (offset === null || offset === undefined) {
       focusEditor();
       return;
     }
 
-    const offsetToRestore = pendingSourceOffset;
-    pendingSourceOffset = null;
-    setCursorAtNearestSourceOffset(offsetToRestore);
+    setCursorAtNearestSourceOffset(offset);
   }
 
   function focusEditor() {
-    if (!crepe) return;
-
     crepe.editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
       if (!view.hasFocus()) {
@@ -315,32 +285,41 @@
     const nextOffset = Number.isFinite(offset) ? offset : 0;
     return Math.max(0, Math.min(max, nextOffset));
   }
-
-
 </script>
 
 <div
   class="milkdown-wrap"
   class:is-editable={editable}
+  class:is-centered={centered}
   bind:this={containerEl}
 ></div>
 
 <style>
   .milkdown-wrap {
     flex: 1;
+    min-height: 0;
     overflow: auto;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-panel);
+    background: var(--surface);
+    scrollbar-gutter: stable;
   }
 
-  /* Trim excessive Milkdown padding */
   .milkdown-wrap :global(.milkdown) {
     padding: 0;
+    background: transparent;
+  }
+
+  /* Remove the extra border from the crepe frame theme */
+  .milkdown-wrap :global(.milkdown .editor) {
+    border: none;
+    box-shadow: none;
   }
 
   .milkdown-wrap :global(.milkdown-top-bar) {
+    position: sticky;
+    top: 0;
+    z-index: 4;
     border-bottom: 1px solid var(--border);
+    background: var(--surface);
   }
 
   .milkdown-wrap:not(.is-editable) :global(.milkdown-top-bar) {
@@ -348,9 +327,8 @@
   }
 
   .milkdown-wrap :global(.ProseMirror) {
-    padding: 18px 22px 24px;
+    padding: 22px 28px 32px;
     min-height: 100%;
-    white-space: pre-wrap;
     outline: none;
     color: var(--text);
     font-family: var(--font-preview);
@@ -360,36 +338,20 @@
   }
 
   .milkdown-wrap.is-editable :global(.ProseMirror) {
-    padding: 20px 28px 28px 104px;
+    padding-left: 104px;
+  }
+
+  .milkdown-wrap.is-centered :global(.ProseMirror) {
+    max-width: calc(var(--reading-width) + 56px);
+    margin-inline: auto;
+  }
+
+  .milkdown-wrap.is-centered.is-editable :global(.ProseMirror) {
+    max-width: calc(var(--reading-width) + 132px);
   }
 
   .milkdown-wrap.is-editable :global(.milkdown-block-handle) {
     z-index: 3;
-  }
-
-  .milkdown-wrap :global(.ProseMirror pre) {
-    background: #f7f7f8;
-    color: #1f2328;
-    margin: 1.5rem 0;
-    padding: 1rem 1.1rem;
-    border: 1px solid #e6e8eb;
-    border-radius: 6px;
-    overflow-x: auto;
-  }
-
-  .milkdown-wrap :global(.ProseMirror code) {
-    background: #f7f7f8;
-    color: #1f2328;
-    padding: 0.12rem 0.35rem;
-    border-radius: 4px;
-    font-size: 0.92em;
-  }
-
-  .milkdown-wrap :global(.ProseMirror pre code),
-  .milkdown-wrap :global(.ProseMirror pre .hljs) {
-    background: transparent;
-    color: inherit;
-    padding: 0;
   }
 
   .milkdown-wrap :global(.ProseMirror > :first-child) {
@@ -413,17 +375,21 @@
     margin-top: 1.65rem;
     margin-bottom: 0.55rem;
     font-family: var(--font-preview);
-    font-weight: 650;
+    font-weight: 700;
     line-height: 1.22;
     letter-spacing: -0.02em;
-    color: #111827;
+    color: var(--text-strong);
   }
 
   .milkdown-wrap :global(.ProseMirror h1) {
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border-subtle);
     font-size: 1.9rem;
   }
 
   .milkdown-wrap :global(.ProseMirror h2) {
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border-subtle);
     font-size: 1.55rem;
   }
 
@@ -445,13 +411,34 @@
     letter-spacing: 0.04em;
   }
 
-  .milkdown-wrap :global(.ProseMirror h1 + p),
-  .milkdown-wrap :global(.ProseMirror h2 + p),
-  .milkdown-wrap :global(.ProseMirror h3 + p),
-  .milkdown-wrap :global(.ProseMirror h4 + p),
-  .milkdown-wrap :global(.ProseMirror h5 + p),
-  .milkdown-wrap :global(.ProseMirror h6 + p) {
+  .milkdown-wrap :global(.ProseMirror :is(h1, h2, h3, h4, h5, h6) + p) {
     margin-top: 0;
+  }
+
+  .milkdown-wrap :global(.ProseMirror pre) {
+    margin: 1.5rem 0;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    background: var(--code-bg);
+    color: var(--text-strong);
+    overflow-x: auto;
+  }
+
+  .milkdown-wrap :global(.ProseMirror code) {
+    padding: 0.12rem 0.35rem;
+    border-radius: 4px;
+    background: var(--code-bg);
+    color: var(--text-strong);
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+  }
+
+  .milkdown-wrap :global(.ProseMirror pre code),
+  .milkdown-wrap :global(.ProseMirror pre .hljs) {
+    padding: 0;
+    background: transparent;
+    color: inherit;
   }
 
   .milkdown-wrap :global(.ProseMirror ul),
@@ -469,8 +456,9 @@
     margin: 0;
   }
 
-  .milkdown-wrap :global(.ProseMirror li > ul),
-  .milkdown-wrap :global(.ProseMirror li > ol) {
+  /* Crepe wraps nested lists in a div, so match any descendant */
+  .milkdown-wrap :global(.ProseMirror li ul),
+  .milkdown-wrap :global(.ProseMirror li ol) {
     margin-top: 0;
     margin-bottom: 0;
   }
@@ -485,13 +473,13 @@
 
   .milkdown-wrap :global(.ProseMirror th),
   .milkdown-wrap :global(.ProseMirror td) {
-    border: 1px solid #dde2e7;
+    border: 1px solid var(--border-subtle);
     text-align: left;
     vertical-align: top;
   }
 
   .milkdown-wrap :global(.ProseMirror th) {
-    background: #f8fafb;
+    background: var(--surface-muted);
     font-family: var(--font-preview);
     font-weight: 600;
   }
@@ -504,18 +492,18 @@
   .milkdown-wrap :global(.ProseMirror blockquote) {
     margin: 1.2rem 0;
     padding: 0.1rem 0 0.1rem 1rem;
-    border-left: 3px solid #d9dee5;
-    color: #4b5563;
+    border-left: 3px solid var(--border);
+    color: var(--text-muted);
   }
 
   .milkdown-wrap :global(.ProseMirror hr) {
     margin: 1.6rem 0;
     border: 0;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--border-subtle);
   }
 
   .milkdown-wrap :global(.ProseMirror a) {
-    color: #174a7c;
+    color: var(--link);
     text-decoration-thickness: 0.08em;
     text-underline-offset: 0.16em;
   }
@@ -527,9 +515,64 @@
     margin: 1.25rem auto;
   }
 
-  /* Remove any extra border from crepe frame theme */
-  .milkdown-wrap :global(.milkdown .editor) {
-    border: none;
-    box-shadow: none;
+  /* Raw HTML rendered by htmlPlugin.js */
+  .milkdown-wrap :global(.md-html img) {
+    display: inline-block;
+    margin: 0;
+    vertical-align: middle;
+  }
+
+  .milkdown-wrap :global(.md-html-block) {
+    display: block;
+    margin: 0.63rem 0;
+  }
+
+  .milkdown-wrap :global(.md-html kbd) {
+    display: inline-block;
+    padding: 0.05rem 0.4rem;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--surface-muted);
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+    line-height: 1.4;
+  }
+
+  .milkdown-wrap :global(.md-html mark) {
+    padding: 0 0.15rem;
+    border-radius: 2px;
+    background: #fff3a3;
+  }
+
+  .milkdown-wrap :global(.md-html details) {
+    margin: 0.8rem 0;
+    padding: 0.5rem 0.8rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+  }
+
+  .milkdown-wrap :global(.md-html summary) {
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  /* In edit mode, make HTML atoms discoverable and selectable */
+  .milkdown-wrap.is-editable :global(.md-html) {
+    outline: 1px dashed var(--border);
+    outline-offset: 1px;
+    border-radius: 2px;
+  }
+
+  .milkdown-wrap.is-editable :global(.md-html.is-empty)::before {
+    content: "</>";
+    padding: 0 0.2rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.75em;
+  }
+
+  .milkdown-wrap :global(.md-html.ProseMirror-selectednode) {
+    outline: 2px solid var(--accent);
   }
 </style>
