@@ -9,7 +9,7 @@ A two-pane Markdown workspace built with Svelte, Milkdown and Vite.
 - **Inline HTML** — raw HTML in the Markdown is rendered (sanitized with DOMPurify): `<br>`, `<kbd>`, `<sub>`/`<sup>`, `<mark>`, `<img>`, `<details>`, etc.
 - **Full source / Full preview** — show only the Markdown source, or only the rendered Markdown in a centered reading column whose width is configurable in percent or pixels (70% by default) from the preview heading. Press `Esc` to return to the split view.
 - **Resizable split** — drag the handle between the panes, or focus it and use the arrow keys / Home / End. Double-click resets it to 40/60.
-- **Open / Download** — load a local `.md` file (or drop it onto the source pane) and download the current content as `.md`.
+- **New / Open / Download** — start a new empty document, load a local `.md` file (or drop it onto the source pane) and download the current content as `.md`.
 - **Status bar** — word, character and line counts, plus the state of the automatic in-browser save.
 - Content, split ratio, full view preference and reading width are saved in `localStorage`.
 - Stacked layout on mobile.
@@ -30,7 +30,7 @@ A two-pane Markdown workspace built with Svelte, Milkdown and Vite.
 ```
 src/
   main.js                – Svelte mount point
-  App.svelte             – Layout, toolbar, state, file open/download
+  App.svelte             – Layout, toolbar, state, file new/open/download
   SourceEditor.svelte    – Textarea + highlight.js overlay
   MilkdownEditor.svelte  – Milkdown Crepe wrapper and sync logic
   Splitter.svelte        – Accessible resize handle between panes
